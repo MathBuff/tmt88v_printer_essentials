@@ -62,13 +62,14 @@ int main()
     int cut_mode = 2;          // 0 = none, 1 = partial cut, 2 = full cut
     bool cut_padding = true;   // true adds 4 new lines padding at the end
     bool word_text_wrapping = true; // Enable text wrapping
-    int page_width = 42;       // Default page width for font A normal size
+    int page_width = 56;       // Default page width for font A normal size
 
     // Font style and scale settings
     // font_style_index: 0 = Font B (smaller), 1 = Font A (normal)
     // font_scale_index: 0=1x, 1=2x, 2=3x, 3=4x magnification
-    int font_style_index = 1;  // Smallest base font by default (Font B)
-    int font_scale_index = 3;  // Normal size (1x scale)
+    int font_style_index = 0;  // Smallest base font by default (Font B)
+    int font_scale_index = 0;  // Normal size (1x scale)
+    //0,0 is the smallest, page width is 56.
 
     const std::vector<std::vector<unsigned char>> font_style_cmds = {
         {0x1B, 0x4D, 0x01}, // Font B (smaller base font)
@@ -85,8 +86,8 @@ int main()
     // Adjust page_width based on font style and scale (approximate)
     // For Font B normal size, width ~ 52 chars; Font A normal size ~ 42 chars.
     // Scaling reduces char count by scale factor.
-    int base_width = (font_style_index == 0) ? 52 : 42;
-    page_width = base_width / (font_scale_index + 1);
+    //int base_width = (font_style_index == 0) ? 52 : 42;
+    //page_width = base_width / (font_scale_index + 1);
 
     // Read input.txt contents
     std::ifstream file("input.txt");
