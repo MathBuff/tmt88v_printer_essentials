@@ -22,7 +22,7 @@ void wrapText(std::string& contents, int maxWidth) {
         std::string currentLine;
 
         while (wordStream >> word) {
-            // Handle thicc words
+            // Handle long words longer than maxWidth
             while (word.length() > maxWidth) {
                 if (!currentLine.empty()) {
                     output << currentLine << "\n";
@@ -51,62 +51,75 @@ void wrapText(std::string& contents, int maxWidth) {
             output << "";
     }
 
-    contents = output.str(); // Slam the new, wrapped version into the original variable like a boss
+    contents = output.str();
 }
 
 int main()
 {
-    const char* printer_ip = "192.168.0.161";  // 🛑 change this if needed
+    const char* printer_ip = "192.168.86.200";  // Change this if needed
 
-    // 👇 INITIALIZED CUT MODE SETTING (CONFIGURE THESE FOR BEHAVIORS)
-    int cut_mode = 2; // 0 = none, 1 = partial cut, 2 = full cut 🧠 change this as needed
-    bool cut_padding = 1; //0 means no cut padding appended to contents, 1 means 4 new lines added.
-    bool word_text_wrapping = 0; //0 means no text wrapping, 1 means text wrapping.
-    int page_width = 56;//56 characters was found to be width of the page in characters
-    //To preserrve white space just turn word text wrapping off.
+    // Settings
+    int cut_mode = 2;          // 0 = none, 1 = partial cut, 2 = full cut
+    bool cut_padding = true;   // true adds 4 new lines padding at the end
+    bool word_text_wrapping = true; // Enable text wrapping
+    int page_width = 42;       // Default page width for font A normal size
 
-    
-    /*READING IN THE FILE*/
+    // Font style and scale settings
+    // font_style_index: 0 = Font B (smaller), 1 = Font A (normal)
+    // font_scale_index: 0=1x, 1=2x, 2=3x, 3=4x magnification
+    int font_style_index = 1;  // Smallest base font by default (Font B)
+    int font_scale_index = 3;  // Normal size (1x scale)
+
+    const std::vector<std::vector<unsigned char>> font_style_cmds = {
+        {0x1B, 0x4D, 0x01}, // Font B (smaller base font)
+        {0x1B, 0x4D, 0x00}  // Font A (normal base font)
+    };
+
+    const std::vector<std::vector<unsigned char>> font_size_cmds = {
+        {0x1D, 0x21, 0x00}, // 1x width & height (normal)
+        {0x1D, 0x21, 0x11}, // 2x width & height
+        {0x1D, 0x21, 0x22}, // 3x width & height
+        {0x1D, 0x21, 0x33}  // 4x width & height
+    };
+
+    // Adjust page_width based on font style and scale (approximate)
+    // For Font B normal size, width ~ 52 chars; Font A normal size ~ 42 chars.
+    // Scaling reduces char count by scale factor.
+    int base_width = (font_style_index == 0) ? 52 : 42;
+    page_width = base_width / (font_scale_index + 1);
+
+    // Read input.txt contents
     std::ifstream file("input.txt");
     if (!file) {
-            std::cerr << "Failed to open input.txt" << std::endl;
-            exit(1);
-        }
-
-        //WRITING FILE CHARACTERS INTO CONTENTS STRING FROM FILE
-       
-        std::string contents;
-
-        contents = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-
-        file.close();
-
-    
-    /*Setting Text Wrapping to contents*/
-    if (word_text_wrapping == 1) {
-        wrapText(contents, page_width); 
+        std::cerr << "Failed to open input.txt" << std::endl;
+        return 1;
     }
-    
-    std::cout <<"====Here is what we are printing====" <<std::endl;
-    std::cout << contents;
-    std::cout << std::endl;
-    std::cout << "====End of sample====" <<std::endl;
-    
-    
-    /*ADDING PADDING TO CONTENTS*/
-    if(cut_padding == 1){
-        contents = contents + "\n\n\n\n";
-         std::cout << "4 Lines of padding was appended to the messege\n";
+    std::string contents((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    // Wrap text if enabled
+    if (word_text_wrapping) {
+        wrapText(contents, page_width);
     }
 
-    //SOCKET SETUP, CONNECTION, AND SENDING
+    std::cout << "==== Here is what we are printing ====" << std::endl;
+    std::cout << contents << std::endl;
+    std::cout << "==== End of sample ====" << std::endl;
 
+    // Add padding if enabled
+    if (cut_padding) {
+        contents += "\n\n\n\n";
+        std::cout << "4 lines of padding appended." << std::endl;
+    }
+
+    // Create socket
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         perror("socket()");
-        exit(1);
+        return 1;
     }
 
+    // Set up printer address
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -116,34 +129,41 @@ int main()
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("connect()");
         close(sock);
-        exit(1);
+        return 1;
     }
 
-    std::cout << "Connected to printer at " << printer_ip << "\n";
+    // Send font style command
+    send(sock, font_style_cmds[font_style_index].data(), font_style_cmds[font_style_index].size(), 0);
 
+    // Send font size (magnification) command
+    send(sock, font_size_cmds[font_scale_index].data(), font_size_cmds[font_scale_index].size(), 0);
+
+    std::cout << "Connected to printer at " << printer_ip << std::endl;
+
+    // Send print data
     ssize_t sent = send(sock, contents.c_str(), contents.size(), 0);
     if (sent < 0) {
         perror("send()");
         close(sock);
-        exit(1);
+        return 1;
     }
+    std::cout << "Sent " << sent << " bytes of data from input.txt" << std::endl;
 
-    std::cout << "Sent " << sent << " bytes of data from input.txt\n";
-
-    //👇 CUT COMMANDS
+    // Send cut command
     if (cut_mode == 1) {
         unsigned char partial_cut[] = { 0x1D, 0x56, 0x01 };
         send(sock, partial_cut, sizeof(partial_cut), 0);
-        std::cout << "✂️ Sent PARTIAL cut command\n";
+        std::cout << "✂️ Sent PARTIAL cut command" << std::endl;
     } else if (cut_mode == 2) {
         unsigned char full_cut[] = { 0x1D, 0x56, 0x00 };
         send(sock, full_cut, sizeof(full_cut), 0);
-        std::cout << "🔪 Sent FULL cut command\n";
+        std::cout << "🔪 Sent FULL cut command" << std::endl;
     } else {
-        std::cout << "🚫 No cut command sent\n";
+        std::cout << "🚫 No cut command sent" << std::endl;
     }
 
     close(sock);
 
     return 0;
 }
+
